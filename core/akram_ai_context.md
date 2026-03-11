@@ -97,7 +97,7 @@ Industries:
 
 # 3. Projects Layer
 
-## Copper & Co.
+## Nefra.
 
 Premium lifestyle brand focused on pure copper bottles and mugs.
 
