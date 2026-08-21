@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EGXAnalysisPacket",
+  "type": "object",
+  "required": ["as_of", "market_regime", "instrument", "market_data", "technical", "risk", "portfolio_context"],
+  "properties": {
+    "as_of": {"type": "string", "format": "date-time"},
+    "market_regime": {"type": "object"},
+    "instrument": {"type": "object", "required": ["ticker", "name"]},
+    "market_data": {"type": "object", "required": ["price", "volume", "timestamp", "source"]},
+    "technical": {"type": "object"},
+    "fundamental": {"type": "object"},
+    "catalysts": {"type": "array"},
+    "risk": {"type": "object", "required": ["entry", "stop_loss", "risk_reward"]},
+    "portfolio_context": {"type": "object", "required": ["equity", "cash"]}
+  },
+  "additionalProperties": false
+}
