@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -27,20 +27,15 @@ class MarketDataProvider(ABC):
 
 
 class EGXAPIProvider(MarketDataProvider):
-    """Thin adapter around EGXAPI market-data endpoints.
-
-    The adapter deliberately does not expose order-routing methods. V1 is
-    data + decision support only; execution remains manual in Telda.
-    """
+    """Thin market-data adapter; intentionally has no order-routing methods."""
 
     name = "egxapi"
 
     def __init__(self, api_key: str, base_url: str = "https://api.egxapi.com", timeout: float = 10.0):
         if not api_key:
             raise ValueError("MARKET_DATA_API_KEY is required")
-        self.base_url = base_url.rstrip("/")
         self.client = httpx.Client(
-            base_url=self.base_url,
+            base_url=base_url.rstrip("/"),
             timeout=timeout,
             headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"},
         )
@@ -67,10 +62,12 @@ class EGXAPIProvider(MarketDataProvider):
         raise MarketDataError("Unexpected market-data payload shape")
 
     def daily_bars(self, ticker: str, start: date, end: date) -> list[DailyBar]:
-        payload = self._get("/v2/market-data/bars", {"symbol": ticker, "from": start.isoformat(), "to": end.isoformat()})
-        rows = self._rows(payload)
+        payload = self._get(
+            "/v2/market-data/bars",
+            {"symbol": ticker, "from": start.isoformat(), "to": end.isoformat()},
+        )
         bars: list[DailyBar] = []
-        for row in rows:
+        for row in self._rows(payload):
             session_date = row.get("date") or row.get("session_date") or row.get("timestamp")
             bars.append(
                 DailyBar(
@@ -87,20 +84,20 @@ class EGXAPIProvider(MarketDataProvider):
         return bars
 
     def snapshot(self, ticker: str) -> MarketSnapshot:
-        # V1 uses the latest returned bar as a normalized snapshot until the
-        # provider's dedicated quote endpoint is wired and contract-tested.
-        today = date.today()
-        bars = self.daily_bars(ticker, today, today)
+        # Until a dedicated quote contract is wired and tested, use the latest
+        # available daily bar and mark it stale unless it is from today.
+        today = datetime.now(timezone.utc).date()
+        bars = self.daily_bars(ticker, today - timedelta(days=7), today)
         if not bars:
             raise MarketDataError(f"No market data returned for {ticker}")
-        bar = bars[-1]
-        now = bar.session_date
-        from datetime import datetime, timezone
-        timestamp = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+
+        bar = max(bars, key=lambda item: item.session_date)
+        source_timestamp = datetime.combine(bar.session_date, datetime.min.time(), tzinfo=timezone.utc)
+        freshness = max(0, int((datetime.now(timezone.utc) - source_timestamp).total_seconds()))
         return MarketSnapshot(
             instrument_id=ticker,
             ticker=ticker,
-            timestamp_utc=timestamp,
+            timestamp_utc=source_timestamp,
             session_date=bar.session_date,
             last_price=bar.close,
             open=bar.open,
@@ -108,6 +105,6 @@ class EGXAPIProvider(MarketDataProvider):
             low=bar.low,
             volume=bar.volume,
             source=self.name,
-            source_timestamp=timestamp,
-            freshness_seconds=0,
+            source_timestamp=source_timestamp,
+            freshness_seconds=freshness,
         )
