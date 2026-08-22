@@ -84,11 +84,7 @@ class EGXAPIProvider(MarketDataProvider):
         return bars
 
     def snapshot(self, ticker: str) -> MarketSnapshot:
-        """Return the latest available bar, explicitly marked stale if old.
-
-        This is intentionally temporary: a dedicated real-time quote contract
-        must replace this method before live trading decisions are enabled.
-        """
+        """Return latest available bar; stale data is blocked by validation."""
         today = datetime.now(timezone.utc).date()
         bars = self.daily_bars(ticker, today - timedelta(days=7), today)
         if not bars:
